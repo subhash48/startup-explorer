@@ -38,7 +38,7 @@ npm.cmd run dev
 
 ## What works
 
-- Enter a company name (for example Stripe or Notion), choose its matching website, and analyze it without typing a URL. Direct website input still works.
+- Enter a startup name, choose from public company-directory matches or a close spelling correction, and analyze it without typing a URL. Direct website input still works.
 - Analyze a public homepage and up to three discovered same-origin About, Product, or Careers pages.
 - Read a clear overview, products, customers, industry, problem, explicitly supported team details, and application talking points.
 - Inspect the pages actually retrieved. Careers is only linked if its discovered page was successfully retrieved.
@@ -57,7 +57,7 @@ src/app/api/analyze/route.ts     Bounded input, server orchestration, safe error
 src/lib/url-safety.ts            URL parsing, IP classification, DNS validation
 src/lib/safe-fetch.ts            Pinned connections, redirects, byte/time limits
 src/lib/extract.ts               Robots policy, Cheerio extraction, page discovery
-src/lib/company-search.ts        Bounded Wikidata name-to-website discovery
+src/lib/company-search.ts        Bounded startup discovery, directory matches, and spelling corrections
 src/app/api/companies/route.ts    Company search endpoint with separate rate limits
 src/lib/analyze.ts               NVIDIA chat, JSON validation, evidence checks
 src/lib/contacts.ts              Evidence checks for people and employment
@@ -75,8 +75,8 @@ The model receives text as untrusted data, no tools, and no permission to follow
 
 ## Security, access, and limits
 
-- Company-name search uses the public [Wikidata API](https://www.wikidata.org/wiki/Wikidata:Data_access) and its official-website property (P856), with no additional API key. Directory descriptions help choose a match; they are not used as report facts or website sources. The user confirms a match, and the selected website passes through the existing URL/DNS checks before extraction. Outdated, deprecated, and unsafe website values are excluded where flagged by the directory. Directory coverage is incomplete, especially for newer startups; an unmatched name can be refined or replaced with a URL.
-- Company search makes at most two requests to a fixed directory host, rejects redirects, caps each response at 1 MB, and has a 12-second deadline. Its separate best-effort in-memory limiter allows 20 searches per client and 200 per instance per ten minutes. Configure deployment edge limits for GET `/api/companies` as well as POST `/api/analyze`; the same cross-instance limitations apply.
+- Company-name search combines the public [Wikidata API](https://www.wikidata.org/wiki/Wikidata:Data_access), a public company-autocomplete directory, and a spelling-suggestion service. This improves coverage for newer startups and misspelled names without inventing a domain. Directory descriptions only help the user choose; they are never report facts or website sources. The user confirms a match, and the selected website passes through the existing URL/DNS checks before extraction. Invalid, expired, deprecated, and unsafe website values are excluded where flagged.
+- Company search makes at most eight requests across fixed directory hosts, rejects redirects, caps each response at 1 MB, and has a 12-second deadline. Its separate best-effort in-memory limiter allows 20 searches per client and 200 per instance per ten minutes. Configure deployment edge limits for GET `/api/companies` as well as POST `/api/analyze`; the same cross-instance limitations apply.
 - WHATWG URL parsing plus `ipaddr.js` classification, not a URL regex. Only HTTP/HTTPS with standard ports; no credentials, internal names, or non-public IPs.
 - All DNS answers must be public. The selected answer is pinned to the socket using Node's lookup hook with the original hostname retained for Host and TLS verification. DNS is revalidated on every redirect. A fixed address family avoids alternate automatic lookups.
 - All cross-origin redirects are deliberately rejected, including bare-domain to www or HTTP to HTTPS redirects. Enter the final canonical HTTPS address, or paste public text. Same-origin redirects have their robots policy checked **before** each destination is fetched.
@@ -122,7 +122,7 @@ NVIDIA integration tests mock HTTP at the SDK boundary to verify the exact endpo
 
 Migration verification passed: lint, TypeScript, 84 automated tests, production build, and eight desktop/mobile browser checks including the rate-limit cooldown. The external-network test remains opt-in and was skipped during this migration.
 
-Company-name search verification: 100 automated tests passed, plus eight desktop/mobile checks covering name lookup, match selection, no-match feedback, cooldowns, and saved reports. Live directory requests successfully resolved Stripe and returned distinguishable Notion matches. Website extraction and report generation remain the existing server-side pipeline after selecting a match.
+Company-name search verification covers official website selection, unsafe-directory filtering, newer company-directory matches, close spelling corrections, empty results, and upstream failures. Website extraction and report generation remain the existing server-side pipeline after selecting a match.
 
 Outreach and visual-refresh verification: 112 automated tests passed, including rejecting customer-testimonial authors and preserving older saved reports. Desktop/mobile checks cover contact cards, evidence disclosure, section navigation, reduced motion, and name search. A separate live NVIDIA contact test passed using explicit employment text; run it only when desired with `RUN_LIVE_CONTACT_TEST=true` and `node --env-file=.env.local node_modules/vitest/vitest.mjs run tests/live-contacts.test.ts`. This test uses the configured account and is skipped in the default suite. A real Stripe report correctly omitted an unrelated customer's contact rather than presenting them as a Stripe employee.
 

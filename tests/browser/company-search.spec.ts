@@ -34,7 +34,7 @@ test("finds a company by name and analyzes its selected website", async ({
     .getByRole("button", { name: "Analyze startup", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Choose the company you mean" }),
+    page.getByRole("heading", { name: "Possible startup matches" }),
   ).toBeVisible();
   expect(submittedUrl).toBe("");
   await page

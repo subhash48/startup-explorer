@@ -11,6 +11,15 @@ const searchSchema = z.object({
     }),
   ),
 });
+const autocompleteSchema = z.array(
+  z.object({
+    name: z.string(),
+    domain: z.string(),
+  }),
+);
+const correctionSchema = z
+  .tuple([z.string(), z.array(z.string())])
+  .rest(z.unknown());
 const statementSchema = z.object({
   rank: z.string().optional(),
   qualifiers: z.record(z.string(), z.unknown()).optional(),
@@ -28,19 +37,32 @@ const entitiesSchema = z.object({
     }),
   ),
 });
+type ScoredMatch = {
+  id: string;
+  name: string;
+  description: string;
+  website: string;
+  source: "wikidata" | "directory";
+  correction?: string;
+  score: number;
+};
 
-async function directoryRequest(
-  params: Record<string, string>,
+function withoutScore(match: ScoredMatch) {
+  return {
+    id: match.id,
+    name: match.name,
+    description: match.description,
+    website: match.website,
+    source: match.source,
+    ...(match.correction ? { correction: match.correction } : {}),
+  };
+}
+
+async function boundedJsonRequest(
+  url: URL,
   signal: AbortSignal,
   fetcher: typeof fetch,
 ) {
-  // Fixed public endpoint, encoded query parameters, no user-controlled host or redirects.
-  const url = new URL("https://www.wikidata.org/w/api.php");
-  url.search = new URLSearchParams({
-    format: "json",
-    maxlag: "5",
-    ...params,
-  }).toString();
   const response = await fetcher(url, {
     signal,
     redirect: "error",
@@ -70,29 +92,196 @@ async function directoryRequest(
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
+async function directoryRequest(
+  params: Record<string, string>,
+  signal: AbortSignal,
+  fetcher: typeof fetch,
+) {
+  // Fixed public endpoint, encoded query parameters, no user-controlled host or redirects.
+  const url = new URL("https://www.wikidata.org/w/api.php");
+  url.search = new URLSearchParams({
+    format: "json",
+    maxlag: "5",
+    ...params,
+  }).toString();
+  return boundedJsonRequest(url, signal, fetcher);
+}
+
+function normalizedName(value: string) {
+  return value.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]/g, "");
+}
+
+function editDistance(left: string, right: string) {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= left.length; i++) {
+    let diagonal = previous[0];
+    previous[0] = i;
+    for (let j = 1; j <= right.length; j++) {
+      const saved = previous[j];
+      previous[j] = Math.min(
+        previous[j] + 1,
+        previous[j - 1] + 1,
+        diagonal + Number(left[i - 1] !== right[j - 1]),
+      );
+      diagonal = saved;
+    }
+  }
+  return previous[right.length];
+}
+
+function isCloseSpelling(input: string, suggestion: string) {
+  const left = normalizedName(input);
+  const right = normalizedName(suggestion);
+  if (!left || !right || left === right) return false;
+  const allowed =
+    left.length <= 4 ? 1 : Math.max(2, Math.floor(left.length * 0.3));
+  return editDistance(left, right) <= allowed;
+}
+
+function matchScore(
+  input: string,
+  candidate: string,
+  correction?: string,
+): number {
+  if (correction)
+    return Math.min(1_200, matchScore(correction, candidate) + 200);
+  const left = normalizedName(input);
+  const right = normalizedName(candidate);
+  if (left === right) return 1_000;
+  if (right.startsWith(left) || left.startsWith(right)) return 800;
+  return Math.max(0, 500 - editDistance(left, right) * 40);
+}
+
+async function spellingCorrections(
+  name: string,
+  signal: AbortSignal,
+  fetcher: typeof fetch,
+) {
+  const url = new URL("https://suggestqueries.google.com/complete/search");
+  url.search = new URLSearchParams({ client: "firefox", q: name }).toString();
+  const suggestions = correctionSchema.parse(
+    await boundedJsonRequest(url, signal, fetcher),
+  )[1];
+  return suggestions
+    .filter((suggestion) => isCloseSpelling(name, suggestion))
+    .slice(0, 2);
+}
+
+async function autocompleteCompanies(
+  name: string,
+  signal: AbortSignal,
+  fetcher: typeof fetch,
+) {
+  const url = new URL("https://autocomplete.clearbit.com/v1/companies/suggest");
+  url.search = new URLSearchParams({ query: name }).toString();
+  const results = autocompleteSchema.parse(
+    await boundedJsonRequest(url, signal, fetcher),
+  );
+  return results.slice(0, 8);
+}
+
 export async function findCompanies(
   query: string,
   fetcher: typeof fetch = fetch,
 ) {
   const name = companyQuerySchema.parse(query);
   const signal = AbortSignal.timeout(12000);
-  const search = searchSchema.parse(
-    await directoryRequest(
-      {
-        action: "wbsearchentities",
-        search: name,
-        language: "en",
-        type: "item",
-        limit: "10",
-      },
-      signal,
-      fetcher,
+  const [initialSearch, initialDirectory, correctionsResult] =
+    await Promise.allSettled([
+      directoryRequest(
+        {
+          action: "wbsearchentities",
+          search: name,
+          language: "en",
+          type: "item",
+          limit: "12",
+        },
+        signal,
+        fetcher,
+      ).then((value) => searchSchema.parse(value).search),
+      autocompleteCompanies(name, signal, fetcher),
+      spellingCorrections(name, signal, fetcher),
+    ]);
+  const corrections =
+    correctionsResult.status === "fulfilled" ? correctionsResult.value : [];
+  const correctedSearches = await Promise.allSettled(
+    corrections.map((correction) =>
+      Promise.all([
+        directoryRequest(
+          {
+            action: "wbsearchentities",
+            search: correction,
+            language: "en",
+            type: "item",
+            limit: "8",
+          },
+          signal,
+          fetcher,
+        ).then((value) => searchSchema.parse(value).search),
+        autocompleteCompanies(correction, signal, fetcher),
+      ]),
     ),
   );
-  const hits = search.search.slice(0, 10);
-  if (!hits.length) return [];
-  const details = entitiesSchema.parse(
-    await directoryRequest(
+  if (
+    initialSearch.status === "rejected" &&
+    initialDirectory.status === "rejected" &&
+    correctedSearches.every((result) => result.status === "rejected")
+  )
+    throw initialSearch.reason instanceof Error
+      ? initialSearch.reason
+      : new Error("Company search is temporarily unavailable.");
+
+  const searchHits =
+    initialSearch.status === "fulfilled" ? [...initialSearch.value] : [];
+  const directoryHits: Array<{
+    result: z.infer<typeof autocompleteSchema>[number];
+    correction?: string;
+  }> =
+    initialDirectory.status === "fulfilled"
+      ? initialDirectory.value.map((result) => ({ result, correction: undefined }))
+      : [];
+  for (let index = 0; index < correctedSearches.length; index++) {
+    const result = correctedSearches[index];
+    if (result.status !== "fulfilled") continue;
+    const [search, directory] = result.value;
+    searchHits.push(...search);
+    directoryHits.push(...directory.map((item) => ({ result: item, correction: corrections[index] })));
+  }
+  const hits = Array.from(new Map(searchHits.map((hit) => [hit.id, hit])).values()).slice(0, 20);
+  const matches: ScoredMatch[] = [];
+  const seen = new Set<string>();
+  for (const { result, correction } of directoryHits) {
+    try {
+      const website = normalizeUrl(result.domain).href;
+      const key = new URL(website).hostname.replace(/^www\./, "");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      matches.push({
+        id: `directory:${key}`,
+        name: result.name.slice(0, 300),
+        description: correction
+          ? `Closest spelling match for "${correction}" from a company directory.`
+          : "Company-directory match. Confirm this is the startup you mean.",
+        website,
+        source: "directory",
+        ...(correction ? { correction } : {}),
+        score: matchScore(name, result.name, correction),
+      });
+    } catch {
+      /* Discard invalid public directory values. Full DNS validation occurs on analysis. */
+    }
+  }
+  if (!hits.length)
+    return companyMatchesSchema.parse(
+      matches
+        .sort((left, right) => right.score - left.score)
+        .slice(0, 8)
+        .map(withoutScore),
+    );
+  let details: z.infer<typeof entitiesSchema> | null = null;
+  try {
+    details = entitiesSchema.parse(
+      await directoryRequest(
       {
         action: "wbgetentities",
         ids: hits.map((hit) => hit.id).join("|"),
@@ -100,11 +289,12 @@ export async function findCompanies(
       },
       signal,
       fetcher,
-    ),
-  );
-  const seen = new Set<string>();
-  const matches = [];
-  for (const hit of hits) {
+      ),
+    );
+  } catch {
+    // Directory matches remain useful if Wikidata is temporarily unavailable.
+  }
+  if (details) for (const hit of hits) {
     const statements = (details.entities[hit.id]?.claims?.P856 ?? [])
       .filter(
         (statement) =>
@@ -133,13 +323,20 @@ export async function findCompanies(
           name: hit.label.slice(0, 300),
           description: (hit.description ?? "").slice(0, 500),
           website: website.href,
+          source: "wikidata",
+          score: matchScore(name, hit.label),
         });
       } catch {
         /* Discard unsafe directory values. Full DNS validation occurs on analysis. */
       }
     }
   }
-  return companyMatchesSchema.parse(matches.slice(0, 5));
+  return companyMatchesSchema.parse(
+    matches
+      .sort((left, right) => right.score - left.score)
+      .slice(0, 8)
+      .map(withoutScore),
+  );
 }
 
 const searchBuckets = new Map<string, { count: number; expires: number }>();

@@ -243,7 +243,8 @@ export default function Explorer({ sampleMode }: { sampleMode: boolean }) {
                   </button>
                 </div>
                 <p className="name-help">
-                  Try a name like Stripe or Notion. No website needed.
+                  Enter any startup name. We’ll look for close spellings and
+                  newer company-directory matches too.
                 </p>
                 {matches.length > 0 && (
                   <section
@@ -251,10 +252,11 @@ export default function Explorer({ sampleMode }: { sampleMode: boolean }) {
                     aria-labelledby="matches-heading"
                     aria-live="polite"
                   >
-                    <h2 id="matches-heading">Choose the company you mean</h2>
+                    <h2 id="matches-heading">Possible startup matches</h2>
                     <p>
-                      Website suggestions from Wikidata. Check the name and
-                      description before continuing.
+                      Matches combine public company directories and close
+                      spelling suggestions. Check the name and website before
+                      continuing.
                     </p>
                     <ul>
                       {matches.map((match) => (
@@ -269,6 +271,11 @@ export default function Explorer({ sampleMode }: { sampleMode: boolean }) {
                           >
                             <span>
                               <strong>{match.name}</strong>
+                              {match.correction && (
+                                <small className="match-correction">
+                                  Showing results for “{match.correction}”
+                                </small>
+                              )}
                               <small>{match.description}</small>
                               <span className="match-domain">
                                 {new URL(match.website).hostname}
@@ -280,8 +287,8 @@ export default function Explorer({ sampleMode }: { sampleMode: boolean }) {
                       ))}
                     </ul>
                     <p>
-                      Not the right company? Try a more specific name or enter
-                      its website.
+                      Not the right company? Try another spelling, add a word
+                      from its name, or enter its website.
                     </p>
                   </section>
                 )}
