@@ -7,6 +7,32 @@ function response(url: string, body: string, status = 200): PageResponse {
   return { url, body, status, type: "text/html" };
 }
 describe("website extraction", () => {
+  it("does not mistake risk management guides or starting-a-company products for team pages", () => {
+    const result = parsePage(
+      '<a href="/guides/risk-management">Risk management</a><a href="/atlas">Start a company</a><a href="/about">About</a>',
+      "https://stripe.com/",
+    );
+    expect(result.links.map((link) => link.url)).toEqual([
+      "https://stripe.com/about",
+    ]);
+  });
+  it("discovers team pages without letting repeated careers links crowd them out", async () => {
+    const fetcher = vi.fn(async (url: string) =>
+      response(
+        url,
+        url.endsWith("robots.txt")
+          ? ""
+          : `<main><p>${paragraph}</p><a href="/careers">Careers</a><a href="/careers/design">Design jobs</a><a href="/leadership">Our leadership</a><a href="/about">About</a></main>`,
+      ),
+    );
+    const result = await extractWebsite("https://company.com", fetcher);
+    expect(result.pages.map((page) => page.url)).toEqual([
+      "https://company.com/",
+      "https://company.com/leadership",
+      "https://company.com/careers",
+      "https://company.com/about",
+    ]);
+  });
   it("removes noise and duplicate text; discovers only same-origin relevant links", () => {
     const page = parsePage(
       `<nav>Navigation<a href="/careers">Careers</a></nav><script>evil()</script><main><p>${paragraph}</p><p>${paragraph}</p><a href="/about">About</a><a href="https://other.com/product">Products</a></main><footer>Copyright</footer>`,

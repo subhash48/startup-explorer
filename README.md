@@ -45,6 +45,8 @@ npm.cmd run dev
 - Paste 150–24,000 characters of public website text when automatic extraction fails. These reports have no retrieved sources and are prominently labeled unverified.
 - Save up to 50 reports in browser localStorage; duplicate domains (including www/protocol/path variants) replace the prior report. View saved dates, reopen reports, or remove them. Nothing syncs between browsers.
 - Use the complete fictional demo without credentials.
+- See publicly named people to reach out to, with roles, explicitly supported responsibilities, source excerpts, and clearly labeled inferred conversation starters. Team and leadership pages receive priority within the existing three-page follow-up budget. The backend requires verbatim evidence for a person's name and role, plus an excerpt naming both the person and the analyzed company to support employment. Unsupported contacts and responsibilities are omitted; no emails, phone numbers, or profile links are invented. A listed role does not guarantee hiring responsibility or availability. Pasted contacts remain unverified, and sample people are clearly fictional.
+- Navigate reports with sticky section links, soft scroll reveals, a reading-progress indicator, and responsive contact cards. All content remains available without animations, and reduced-motion preferences disable animated reveals and smooth scrolling. Saved reports from before outreach was added still open with an empty contact list.
 
 ## Architecture
 
@@ -58,6 +60,9 @@ src/lib/extract.ts               Robots policy, Cheerio extraction, page discove
 src/lib/company-search.ts        Bounded Wikidata name-to-website discovery
 src/app/api/companies/route.ts    Company search endpoint with separate rate limits
 src/lib/analyze.ts               NVIDIA chat, JSON validation, evidence checks
+src/lib/contacts.ts              Evidence checks for people and employment
+src/components/outreach.tsx      Public contacts and inferred outreach suggestions
+src/components/scroll-effects.tsx Accessible progressive scroll animation
 src/lib/inference-error.ts       Safe provider errors and Retry-After parsing
 src/lib/schema.ts                Shared Zod request/report validation
 src/lib/storage.ts               Validated browser storage and deduplication
@@ -118,6 +123,8 @@ NVIDIA integration tests mock HTTP at the SDK boundary to verify the exact endpo
 Migration verification passed: lint, TypeScript, 84 automated tests, production build, and eight desktop/mobile browser checks including the rate-limit cooldown. The external-network test remains opt-in and was skipped during this migration.
 
 Company-name search verification: 100 automated tests passed, plus eight desktop/mobile checks covering name lookup, match selection, no-match feedback, cooldowns, and saved reports. Live directory requests successfully resolved Stripe and returned distinguishable Notion matches. Website extraction and report generation remain the existing server-side pipeline after selecting a match.
+
+Outreach and visual-refresh verification: 112 automated tests passed, including rejecting customer-testimonial authors and preserving older saved reports. Desktop/mobile checks cover contact cards, evidence disclosure, section navigation, reduced motion, and name search. A separate live NVIDIA contact test passed using explicit employment text; run it only when desired with `RUN_LIVE_CONTACT_TEST=true` and `node --env-file=.env.local node_modules/vitest/vitest.mjs run tests/live-contacts.test.ts`. This test uses the configured account and is skipped in the default suite. A real Stripe report correctly omitted an unrelated customer's contact rather than presenting them as a Stripe employee.
 
 A separate opt-in network test previously successfully extracted `https://www.iana.org/about` through the actual DNS-pinned transport. This network test is skipped in the default offline test suite; run it with `RUN_NETWORK_TEST=true` to check external connectivity again.
 

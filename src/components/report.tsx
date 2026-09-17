@@ -1,5 +1,6 @@
 import type { Report } from "@/lib/schema";
 import { Icon } from "./icons";
+import Outreach from "./outreach";
 export default function ReportView({
   report,
   saved,
@@ -31,7 +32,7 @@ export default function ReportView({
           </p>
         </div>
       </div>
-      <div className="report-header">
+      <div className="report-header" data-reveal>
         <div className="company">
           <span className="company-avatar">
             {report.companyName.slice(0, 1)}
@@ -49,7 +50,21 @@ export default function ReportView({
           {saved ? "Saved · Remove" : "Save startup"}
         </button>
       </div>
-      <div className="report-grid">
+      <nav className="report-nav" aria-label="Report sections">
+        <a href="#company-overview">
+          01 <span>Overview</span>
+        </a>
+        <a href="#company-people">
+          02 <span>People</span>
+        </a>
+        <a href="#company-application">
+          03 <span>Your application</span>
+        </a>
+        <a href="#company-sources">
+          04 <span>Sources</span>
+        </a>
+      </nav>
+      <div className="report-grid" id="company-overview">
         <article className="card overview">
           <div className="eyebrow">
             <Icon name="globe" size={16} /> THE BIG PICTURE
@@ -118,6 +133,9 @@ export default function ReportView({
             )}
           </div>
         </article>
+      </div>
+      <Outreach report={report} />
+      <div className="report-grid" id="company-application">
         <article className="card talking">
           <div className="talking-title">
             <span className="icon-tile">
@@ -152,7 +170,7 @@ export default function ReportView({
           </div>
         </article>
       </div>
-      <div className="sources">
+      <div className="sources" id="company-sources" data-reveal>
         <div>
           <h4>{report.mode === "live" ? "RETRIEVED SOURCES" : "SOURCES"}</h4>
           {report.sources.length ? (

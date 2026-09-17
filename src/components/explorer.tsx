@@ -17,6 +17,7 @@ import {
 } from "@/lib/storage";
 import ReportView from "./report";
 import { Icon } from "./icons";
+import ScrollEffects from "./scroll-effects";
 export default function Explorer({ sampleMode }: { sampleMode: boolean }) {
   const [tab, setTab] = useState<"explore" | "saved">("explore");
   const [url, setUrl] = useState("");
@@ -70,7 +71,10 @@ export default function Explorer({ sampleMode }: { sampleMode: boolean }) {
     setTimeout(
       () =>
         resultRef.current?.scrollIntoView({
-          behavior: "smooth",
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
+            .matches
+            ? "auto"
+            : "smooth",
           block: "start",
         }),
       60,
@@ -143,6 +147,9 @@ export default function Explorer({ sampleMode }: { sampleMode: boolean }) {
     : false;
   return (
     <div className="app-shell">
+      <ScrollEffects
+        revision={`${tab}-${report?.analyzedAt ?? "empty"}-${report?.companyName ?? ""}`}
+      />
       <a className="skip-link" href="#main">
         Skip to content
       </a>
@@ -175,19 +182,25 @@ export default function Explorer({ sampleMode }: { sampleMode: boolean }) {
         {tab === "explore" ? (
           <>
             <section className="hero">
-              <div className="hero-kicker">
+              <div className="hero-art" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+                <Icon name="compass" size={72} />
+              </div>
+              <div className="hero-kicker" data-reveal>
                 <span /> A LITTLE RESEARCH. A BETTER NEXT STEP.
               </div>
-              <h1>
+              <h1 data-reveal>
                 Understand a startup
                 <br />
                 <span>before you apply.</span>
               </h1>
-              <p className="hero-description">
+              <p className="hero-description" data-reveal>
                 Turn a company website into a clear overview of its
                 <br className="desktop-break" /> product, customers, and team.
               </p>
-              <form className="analyze-form" onSubmit={submit}>
+              <form className="analyze-form" onSubmit={submit} data-reveal>
                 <label htmlFor="website">
                   Which startup are you curious about?
                 </label>
@@ -311,6 +324,20 @@ export default function Explorer({ sampleMode }: { sampleMode: boolean }) {
                   </div>
                 )}
               </form>
+              <div className="hero-benefits">
+                <span>
+                  <Icon name="globe" size={14} />
+                  Understand the business
+                </span>
+                <span>
+                  <Icon name="people" size={14} />
+                  Meet the people
+                </span>
+                <span>
+                  <Icon name="spark" size={14} />
+                  Start a conversation
+                </span>
+              </div>
               <p className="sample-link">
                 Just looking around?{" "}
                 <button onClick={() => show(sampleReport)} disabled={loading}>

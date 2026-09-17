@@ -3,10 +3,23 @@ export function Icon({
   size = 20,
 }: {
   name:
-    "arrow" | "bookmark" | "globe" | "spark" | "check" | "close" | "compass";
+    | "arrow"
+    | "bookmark"
+    | "globe"
+    | "spark"
+    | "check"
+    | "close"
+    | "compass"
+    | "people";
   size?: number;
 }) {
   const paths = {
+    people: (
+      <>
+        <circle cx="9" cy="8" r="3" />
+        <path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M18 15a5 5 0 0 1 3 4v2" />
+      </>
+    ),
     arrow: (
       <>
         <path d="M5 12h14M13 6l6 6-6 6" />

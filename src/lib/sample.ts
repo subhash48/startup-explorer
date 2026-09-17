@@ -17,6 +17,37 @@ export const sampleReport: Report = {
   employeeRange: null,
   headquarters: null,
   careersUrl: null,
+  contacts: [
+    {
+      name: "Maya Chen",
+      employmentEvidence:
+        "Maya Chen, Head of People, leads recruiting and onboarding at Sprout.",
+      role: "Head of People",
+      whatTheyDo:
+        "Leads recruiting and helps new teammates settle into the company.",
+      evidence:
+        "Maya Chen, Head of People, leads recruiting and onboarding at Sprout.",
+      responsibilityEvidence:
+        "Maya Chen, Head of People, leads recruiting and onboarding at Sprout.",
+      outreachReason:
+        "Ask about the hiring process and which teams are growing.",
+      sourceUrl: null,
+    },
+    {
+      name: "Alex Rivera",
+      employmentEvidence: "Alex Rivera is Co-founder & Product Lead at Sprout.",
+      role: "Co-founder & Product Lead",
+      whatTheyDo:
+        "Guides product strategy and works with customers to shape the research workspace.",
+      evidence:
+        "Alex Rivera, Co-founder & Product Lead, guides product strategy and customer research.",
+      responsibilityEvidence:
+        "Alex Rivera, Co-founder & Product Lead, guides product strategy and customer research.",
+      outreachReason:
+        "Discuss the product problems you would be excited to help solve.",
+      sourceUrl: null,
+    },
+  ],
   talkingPoints: [
     {
       insight:

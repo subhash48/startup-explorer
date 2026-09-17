@@ -22,13 +22,20 @@ export function parsePage(html: string, url: string) {
       if (target.origin !== new URL(url).origin || target.href === url) return;
       const label = `${$(el).text()} ${target.pathname}`;
       const careers = /career|jobs|join[- ]us/i.test(label);
-      const score = careers
-        ? 3
-        : /about|our[- ]story|company/i.test(label)
-          ? 2
-          : /product|solution|platform/i.test(label)
-            ? 1
-            : 0;
+      const score =
+        /leadership|our[- ]team|meet[- ]the[- ]team|founders|management[- ]team|executive[- ]team|\/team(?:\/|$)|\/people(?:\/|$)/i.test(
+          label,
+        )
+          ? 4
+          : careers
+            ? 3
+            : /\/about(?:\/|$)|\/company(?:\/|$)|about us|our[- ]story/i.test(
+                  label,
+                )
+              ? 2
+              : /product|solution|platform/i.test(label)
+                ? 1
+                : 0;
       if (score && !links.some((l) => l.url === target.href))
         links.push({ url: target.href, label, score, careers });
     } catch {
@@ -96,7 +103,18 @@ export async function extractWebsite(
     const pages =
       parsed.text.length >= 150 ? [{ url: home.url, text: parsed.text }] : [];
     let careersUrl: string | null = null;
-    for (const link of parsed.links.slice(0, 3)) {
+    // Reserve slots for different page types so multiple job links do not crowd out team bios.
+    const selected = [
+      ...new Map(
+        parsed.links.map((link) => [
+          link.score,
+          parsed.links.find((candidate) => candidate.score === link.score)!,
+        ]),
+      ).values(),
+    ];
+    for (const link of parsed.links)
+      if (!selected.includes(link)) selected.push(link);
+    for (const link of selected.slice(0, 3)) {
       try {
         await allowed(new URL(link.url));
         const res = await fetcher(link.url, signal, start.origin, allowed);
