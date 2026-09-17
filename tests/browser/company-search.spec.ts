@@ -12,6 +12,7 @@ test("finds a company by name and analyzes its selected website", async ({
             name: "Stripe",
             description: "Payment technology company",
             website: "https://stripe.com/",
+            source: "web",
           },
           {
             id: "Q2",
@@ -36,6 +37,7 @@ test("finds a company by name and analyzes its selected website", async ({
   await expect(
     page.getByRole("heading", { name: "Possible startup matches" }),
   ).toBeVisible();
+  await expect(page.getByText("Found through public web discovery")).toBeVisible();
   expect(submittedUrl).toBe("");
   await page
     .getByRole("button", { name: "Analyze Stripe at stripe.com", exact: true })

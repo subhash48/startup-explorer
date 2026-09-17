@@ -95,6 +95,32 @@ describe("company-name discovery", () => {
     ]);
   });
 
+  it("finds a new startup from a matching public web result", async () => {
+    const fetcher = vi.fn(async (url: URL) => {
+      if (url.hostname === "www.bing.com")
+        return new Response(`
+          <ol id="b_results">
+            <li class="b_algo"><h2><a href="http://127.0.0.1">MintMCP</a></h2></li>
+            <li class="b_algo"><h2><a href="https://www.bing.com/ck/a?u=a1aHR0cHM6Ly93d3cubWludG1jcC5jb20v">MintMCP: Enterprise MCP gateway</a></h2><div class="b_caption"><p>Govern AI agent access.</p></div></li>
+          </ol>
+        `);
+      if (url.hostname === "suggestqueries.google.com")
+        return response(["mintmcp", []]);
+      if (url.hostname === "autocomplete.clearbit.com") return response([]);
+      return response({ search: [] });
+    });
+
+    await expect(findCompanies("mintmcp", fetcher as typeof fetch)).resolves.toEqual([
+      {
+        id: "web:mintmcp.com",
+        name: "MintMCP: Enterprise MCP gateway",
+        description: "Govern AI agent access.",
+        website: "https://www.mintmcp.com/",
+        source: "web",
+      },
+    ]);
+  });
+
   it("uses a close spelling correction to find a startup", async () => {
     const fetcher = vi.fn(async (url: URL) => {
       if (url.hostname === "suggestqueries.google.com")

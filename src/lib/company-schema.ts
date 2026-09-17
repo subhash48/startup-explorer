@@ -4,11 +4,11 @@ export const companyQuerySchema = z.string().trim().min(2).max(100);
 export const companyMatchesSchema = z
   .array(
     z.object({
-      id: z.string().regex(/^(?:Q\d+|directory:[a-z\d.-]+)$/i),
+      id: z.string().regex(/^(?:Q\d+|(?:directory|web):[a-z\d.-]+)$/i),
       name: z.string().max(300),
       description: z.string().max(500),
       website: z.url().refine((value) => /^https?:\/\//.test(value)),
-      source: z.enum(["wikidata", "directory"]).optional(),
+      source: z.enum(["wikidata", "directory", "web"]).optional(),
       correction: z.string().max(100).optional(),
     }),
   )

@@ -243,8 +243,8 @@ export default function Explorer({ sampleMode }: { sampleMode: boolean }) {
                   </button>
                 </div>
                 <p className="name-help">
-                  Enter any startup name. We’ll look for close spellings and
-                  newer company-directory matches too.
+                  Enter any startup name. We’ll check public directories,
+                  close spellings, and the public web.
                 </p>
                 {matches.length > 0 && (
                   <section
@@ -254,9 +254,9 @@ export default function Explorer({ sampleMode }: { sampleMode: boolean }) {
                   >
                     <h2 id="matches-heading">Possible startup matches</h2>
                     <p>
-                      Matches combine public company directories and close
-                      spelling suggestions. Check the name and website before
-                      continuing.
+                      Matches come from public directories, close spelling
+                      suggestions, and public web discovery. Check the name
+                      and website before continuing.
                     </p>
                     <ul>
                       {matches.map((match) => (
@@ -271,6 +271,11 @@ export default function Explorer({ sampleMode }: { sampleMode: boolean }) {
                           >
                             <span>
                               <strong>{match.name}</strong>
+                              {match.source === "web" && (
+                                <small className="match-source">
+                                  Found through public web discovery
+                                </small>
+                              )}
                               {match.correction && (
                                 <small className="match-correction">
                                   Showing results for “{match.correction}”

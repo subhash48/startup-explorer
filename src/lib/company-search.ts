@@ -1,4 +1,5 @@
 import { z } from "zod";
+import * as cheerio from "cheerio";
 import { companyMatchesSchema, companyQuerySchema } from "./company-schema";
 import { normalizeUrl } from "./url-safety";
 
@@ -42,7 +43,7 @@ type ScoredMatch = {
   name: string;
   description: string;
   website: string;
-  source: "wikidata" | "directory";
+  source: "wikidata" | "directory" | "web";
   correction?: string;
   score: number;
 };
@@ -90,6 +91,38 @@ async function boundedJsonRequest(
     chunks.push(value);
   }
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+async function boundedTextRequest(
+  url: URL,
+  signal: AbortSignal,
+  fetcher: typeof fetch,
+) {
+  const response = await fetcher(url, {
+    signal,
+    redirect: "error",
+    cache: "no-store",
+    headers: {
+      Accept: "text/html,application/xhtml+xml",
+      "User-Agent": "StartupExplorer/1.0 (company website discovery)",
+    },
+  });
+  if (!response.ok || !response.body)
+    throw new Error("Web discovery is temporarily unavailable.");
+  const reader = response.body.getReader();
+  let size = 0;
+  const chunks: Uint8Array[] = [];
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > 1_000_000) {
+      await reader.cancel();
+      throw new Error("Web discovery response is too large.");
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 async function directoryRequest(
@@ -180,13 +213,73 @@ async function autocompleteCompanies(
   return results.slice(0, 8);
 }
 
+function isRelevantWebResult(name: string, title: string, hostname: string) {
+  const query = normalizedName(name);
+  const titleText = normalizedName(title);
+  const domainText = normalizedName(hostname.replace(/\.(?:com|io|ai|co|app|dev|org|net)$/i, ""));
+  return (
+    titleText.includes(query) ||
+    domainText.includes(query) ||
+    query.includes(domainText)
+  );
+}
+
+function resultDestination(href: string) {
+  const result = new URL(href);
+  if (
+    !/(^|\.)bing\.com$/i.test(result.hostname) ||
+    !result.pathname.startsWith("/ck/")
+  )
+    return result.href;
+  const encoded = result.searchParams.get("u");
+  if (!encoded?.startsWith("a1")) return result.href;
+  const destination = Buffer.from(encoded.slice(2), "base64url").toString("utf8");
+  return /^https?:\/\//i.test(destination) ? destination : result.href;
+}
+
+async function webDiscovery(
+  name: string,
+  signal: AbortSignal,
+  fetcher: typeof fetch,
+) {
+  const url = new URL("https://www.bing.com/search");
+  url.search = new URLSearchParams({
+    q: `${name} official website`,
+    count: "8",
+    setlang: "en-US",
+  }).toString();
+  const $ = cheerio.load(await boundedTextRequest(url, signal, fetcher));
+  const results: Array<{ name: string; website: string; description: string }> = [];
+  $("#b_results .b_algo").each((_, element) => {
+    if (results.length >= 5) return;
+    const anchor = $(element).find("h2 a[href]").first();
+    const title = anchor.text().replace(/\s+/g, " ").trim();
+    const href = anchor.attr("href");
+    if (!title || !href) return;
+    try {
+      const website = normalizeUrl(resultDestination(href));
+      if (!isRelevantWebResult(name, title, website.hostname)) return;
+      results.push({
+        name: title.slice(0, 300),
+        website: website.href,
+        description:
+          $(element).find(".b_caption p").first().text().replace(/\s+/g, " ").trim().slice(0, 500) ||
+          "Public web discovery result. Confirm this is the startup you mean.",
+      });
+    } catch {
+      /* Discard unsafe or malformed result URLs. */
+    }
+  });
+  return results;
+}
+
 export async function findCompanies(
   query: string,
   fetcher: typeof fetch = fetch,
 ) {
   const name = companyQuerySchema.parse(query);
   const signal = AbortSignal.timeout(12000);
-  const [initialSearch, initialDirectory, correctionsResult] =
+  const [initialSearch, initialDirectory, correctionsResult, webResults] =
     await Promise.allSettled([
       directoryRequest(
         {
@@ -201,6 +294,7 @@ export async function findCompanies(
       ).then((value) => searchSchema.parse(value).search),
       autocompleteCompanies(name, signal, fetcher),
       spellingCorrections(name, signal, fetcher),
+      webDiscovery(name, signal, fetcher),
     ]);
   const corrections =
     correctionsResult.status === "fulfilled" ? correctionsResult.value : [];
@@ -225,6 +319,7 @@ export async function findCompanies(
   if (
     initialSearch.status === "rejected" &&
     initialDirectory.status === "rejected" &&
+    webResults.status === "rejected" &&
     correctedSearches.every((result) => result.status === "rejected")
   )
     throw initialSearch.reason instanceof Error
@@ -250,6 +345,21 @@ export async function findCompanies(
   const hits = Array.from(new Map(searchHits.map((hit) => [hit.id, hit])).values()).slice(0, 20);
   const matches: ScoredMatch[] = [];
   const seen = new Set<string>();
+  if (webResults.status === "fulfilled") {
+    for (const result of webResults.value) {
+      const key = new URL(result.website).hostname.replace(/^www\./, "");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      matches.push({
+        id: `web:${key}`,
+        name: result.name,
+        description: result.description,
+        website: result.website,
+        source: "web",
+        score: matchScore(name, `${result.name} ${key}`) + 100,
+      });
+    }
+  }
   for (const { result, correction } of directoryHits) {
     try {
       const website = normalizeUrl(result.domain).href;
