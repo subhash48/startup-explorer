@@ -36,6 +36,42 @@ afterEach(() => {
 });
 
 describe("NVIDIA Chat Completions", () => {
+  it("recovers from one transient NVIDIA 503 without changing the model", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response("unavailable", { status: 503 }))
+      .mockResolvedValueOnce(reply());
+    const result = await analyze("https://company.com/", extracted, false);
+    expect(result.mode).toBe("live");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).model).toBe(
+      "nvidia/nemotron-3-super-120b-a12b",
+    );
+  });
+  it("stops after one retry and returns a safe service error", async () => {
+    fetchMock.mockResolvedValue(
+      new Response("private upstream details", { status: 503 }),
+    );
+    await expect(
+      analyze("https://company.com/", extracted, false),
+    ).rejects.toMatchObject({
+      status: 503,
+      retryAfterSeconds: 30,
+      message: expect.stringContaining("temporarily unavailable"),
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+  it("honors long upstream cooldowns without retrying immediately", async () => {
+    fetchMock.mockResolvedValue(
+      new Response("unavailable", {
+        status: 503,
+        headers: { "Retry-After": "120" },
+      }),
+    );
+    await expect(
+      analyze("https://company.com/", extracted, false),
+    ).rejects.toMatchObject({ status: 503, retryAfterSeconds: 120 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
   it("calls only the NVIDIA endpoint with the exact configured model and plain Chat Completions", async () => {
     fetchMock.mockResolvedValue(reply());
     const result = await analyze("https://company.com/", extracted, false);

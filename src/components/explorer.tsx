@@ -34,10 +34,7 @@ export default function Explorer({ sampleMode }: { sampleMode: boolean }) {
   const busy = useRef(false);
   useEffect(() => {
     if (!retryDelayMs) return;
-    const timer = setTimeout(
-      () => setRetryDelayMs(0),
-      retryDelayMs,
-    );
+    const timer = setTimeout(() => setRetryDelayMs(0), retryDelayMs);
     return () => clearTimeout(timer);
   }, [retryDelayMs]);
   useEffect(() => {
@@ -117,13 +114,11 @@ export default function Explorer({ sampleMode }: { sampleMode: boolean }) {
       const data = await res.json();
       if (!res.ok) {
         if (
-          res.status === 429 &&
+          (res.status === 429 || res.status === 503) &&
           Number.isFinite(data.retryAfterSeconds) &&
           data.retryAfterSeconds > 0
         ) {
-          setRetryDelayMs(
-            Math.min(86400, data.retryAfterSeconds) * 1000,
-          );
+          setRetryDelayMs(Math.min(86400, data.retryAfterSeconds) * 1000);
         }
         if (data.allowPaste) setPaste(true);
         throw new Error(data.error || "We could not analyze this website.");

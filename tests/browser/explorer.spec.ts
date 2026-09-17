@@ -1,4 +1,39 @@
 import { test, expect } from "@playwright/test";
+test("temporary NVIDIA outages retain the website and apply a retry cooldown", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.route("**/api/analyze", (route) =>
+    route.fulfill({
+      status: 503,
+      json: {
+        error:
+          "NVIDIA is temporarily unavailable. Please try again in 30 seconds.",
+        retryAfterSeconds: 30,
+      },
+    }),
+  );
+  await page.goto("/");
+  await page
+    .getByLabel("Which startup are you curious about?")
+    .fill("stripe.com");
+  await page
+    .getByRole("button", { name: "Analyze startup", exact: true })
+    .click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "temporarily unavailable" }),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("Which startup are you curious about?"),
+  ).toHaveValue("stripe.com");
+  await expect(
+    page.getByRole("button", { name: "Please wait to retry" }),
+  ).toBeDisabled();
+  await page.clock.fastForward(31000);
+  await expect(
+    page.getByRole("button", { name: "Analyze startup", exact: true }),
+  ).toBeEnabled();
+});
 test("provider rate limits pause resubmission while keeping the sample available", async ({
   page,
 }) => {
